@@ -17,13 +17,13 @@ import (
 
 // Token I wish the linter would just shut the fuck up
 var (
-	Token     string
 	Prefix    string
 	EmojiHelp = &discordgo.MessageEmbed{
 		Description: fmt.Sprintf("__Options:__\nadd, addm, delete, edit, list, help, init\n\n__Examples:__\n%vemoji init -- initiates an emoji embed!\n%vemoji add pog https://cdn.discordapp.com/emojis/735224366450606090.png?v=1\n%vemoji delete pog\n%vemoji edit pog pog1\n%vemoji addm :emoji1: :emoji2: :emoji3:....", Prefix, Prefix, Prefix, Prefix, Prefix),
 	}
-	Database = make(map[string]*dbStuff)
-	Config   config
+	Database       = make(map[string]*dbStuff)
+	Config         config
+	GuildPrefixing bool
 )
 
 type dbStuff struct {
@@ -32,8 +32,9 @@ type dbStuff struct {
 }
 
 type config struct {
-	Prefix string `json:"prefix"`
-	Token  string `json:"token"`
+	Prefix         string `json:"prefix"`
+	Token          string `json:"token"`
+	GuildPrefixing bool   `json:"guildPrefixing"`
 }
 
 func chunks(arr []*discordgo.Emoji) []string {
@@ -79,7 +80,18 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 				session.ChannelMessageSendEmbed(msg.ChannelID, EmojiHelp)
 				break
 			}
-			emoji, err := session.GuildEmojiCreate(msg.GuildID, parts[0], emutil.EncodeImageEmoji(parts[1]), nil)
+			var guildPrefix string
+			if GuildPrefixing {
+				guild, err := session.State.Guild(msg.GuildID)
+
+				if err == nil {
+					for _, g := range strings.Split(guild.Name, " ") {
+						guildPrefix += strings.Split(g, "")[0]
+					}
+					guildPrefix += "_"
+				}
+			}
+			emoji, err := session.GuildEmojiCreate(msg.GuildID, guildPrefix+parts[0], emutil.EncodeImageEmoji(parts[1]), nil)
 			if err != nil {
 				session.ChannelMessageSend(msg.ChannelID, fmt.Sprintf("```%v```", err))
 				break
@@ -143,10 +155,21 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 				session.ChannelMessageSend(msg.ChannelID, "No emojis detected!")
 				return
 			}
+			var guildPrefix string
+			if GuildPrefixing {
+				guild, err := session.State.Guild(msg.GuildID)
+
+				if err == nil {
+					for _, g := range strings.Split(guild.Name, " ") {
+						guildPrefix += strings.Split(g, "")[0]
+					}
+					guildPrefix += "_"
+				}
+			}
 			for _, em := range emojis {
 				encoded := emutil.EncodeEmojiByID(em.ID)
 				if encoded != "" {
-					e, err := session.GuildEmojiCreate(msg.GuildID, em.Name, encoded, nil)
+					e, err := session.GuildEmojiCreate(msg.GuildID, guildPrefix+em.Name, encoded, nil)
 					if err != nil {
 						session.ChannelMessageSend(msg.ChannelID, "failed to add "+em.Name)
 					}
@@ -250,6 +273,7 @@ func main() {
 	getDatabase()
 	getConfig()
 	Prefix = Config.Prefix
+	GuildPrefixing = Config.GuildPrefixing
 	bot, err := discordgo.New("Bot " + Config.Token)
 	if err != nil {
 		log.Fatal("ERROR LOGGING IN ", err)
