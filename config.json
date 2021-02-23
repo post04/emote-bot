@@ -1,4 +1,5 @@
 {
     "token": "your_bots_token",
-    "prefix": "."
+    "prefix": ".",
+    "guildPrefixing": false
 }
